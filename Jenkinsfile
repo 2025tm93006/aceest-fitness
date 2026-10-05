@@ -10,23 +10,24 @@ pipeline {
         }
         stage('Syntax check') {
             steps {
-                dir('flask-v1.0') {
-                    sh 'python3 -m compileall -q app.py tests'
+                dir('aceest-fitness') {
+                    sh 'python3 -m compileall -q app.py programs.py tests'
                 }
             }
         }
         stage('Docker build') {
             steps {
-                dir('flask-v1.0') {
-                    sh 'docker build --target test -t aceest-v1:test .'
-                    sh 'docker build --target runtime -t aceest-v1:runtime .'
+                dir('aceest-fitness') {
+                    sh 'docker build --target test -t aceest-fitness:test .'
+                    sh 'docker build --target runtime -t aceest-fitness:runtime .'
                 }
             }
         }
         stage('Container tests') {
             steps {
-                sh 'docker run --rm aceest-v1:test'
+                sh 'docker run --rm aceest-fitness:test'
             }
         }
     }
 }
+

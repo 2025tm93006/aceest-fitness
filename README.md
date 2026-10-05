@@ -1,54 +1,44 @@
-# ACEest Fitness Flask version 1.0
+# ACEest Fitness Flask version 1.1
 
-This folder ports **only** `Aceestver-1.0.py` to Flask. It provides the original three fixed programs, their workout and nutrition text, program colors, and site metrics. Version 1.0 has no client persistence, calorie calculation, adherence tracking, or database; those belong to later milestones.
+This milestone migrates only `Aceestver-1.1.py`. It adds name, age, weight, weekly adherence, weight-based calorie estimates, Save Client confirmation, and Reset to the program viewer. Workout and nutrition text match the 1.1 script exactly. The 1.0 site metrics panel is absent because the supplied 1.1 script removes it.
 
-## Run locally
+Save Client only confirms the entered details, as in the original script. Nothing is stored; a fresh visit or Reset clears the form. Client lists, coach notes, CSV export, and progress charts belong to 1.1.2.
 
-From `flask-v1.0` with Python 3.12 or newer:
+## Run and test
+
+From this folder, using Python 3.12 or newer:
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements-test.txt
+python -m pytest -q
 flask --app app run
 ```
 
-Open http://127.0.0.1:5000/ and select a program. This uses Flask's local development server.
-
-## Test
-
-```sh
-python -m pytest -q
-python -m compileall -q app.py tests
-```
-
-The tests verify initial placeholders, all three programs, site metrics, missing-program behavior, and read-only endpoints.
+Open http://127.0.0.1:5000/. Selecting a program refreshes its plans and calculates `int(weight × calorie_factor)` when weight is positive. View program also works without JavaScript. Save Client requires a name and program. Reset returns to the empty form.
 
 ## Docker
 
-With a running Docker daemon, from `flask-v1.0`:
-
 ```sh
-docker build --target test -t aceest-v1:test .
-docker run --rm aceest-v1:test
-docker build --target runtime -t aceest-v1:runtime .
-docker run --rm -p 127.0.0.1:8000:8000 aceest-v1:runtime
+docker build --target test -t aceest-v1.1:test .
+docker run --rm aceest-v1.1:test
+docker build --target runtime -t aceest-v1.1:runtime .
+docker run --rm -p 127.0.0.1:8000:8000 aceest-v1.1:runtime
 ```
 
-Open http://127.0.0.1:8000/. The runtime image runs Gunicorn as a non-root user; Pytest is installed only in the test image.
+The runtime image serves the app through Gunicorn as a non-root user. Pytest is installed in the test image only.
 
-## Read-only service endpoints
+## Jenkins
 
-| Method | Path | Response |
-| --- | --- | --- |
-| GET | `/api/programs` | Program names and IDs |
-| GET | `/api/programs/<id>` | Workout, diet, and color for one program |
-| GET | `/api/site-metrics` | Capacity, area, and break-even values |
+Configure a Pipeline from SCM job using script path `flask-v1.1/Jenkinsfile`. It expects this folder inside the repository root. The agent needs Python 3, Docker CLI, and a running Docker daemon. The pipeline checks syntax, builds the two images, and runs the container tests. A repository and Jenkins server must be configured separately.
 
-Program IDs are `fat-loss`, `muscle-gain`, and `beginner`.
+## API
 
-## Jenkins setup
+- `GET /api/programs`: the three program names and IDs.
+- `GET /api/programs/<id>?weight=70`: program details and estimated calories. IDs are `fat-loss`, `muscle-gain`, and `beginner`; an omitted or zero weight returns a null estimate.
 
-The `Jenkinsfile` is ready for a Pipeline job that checks out a repository containing this folder. Set the Pipeline script path to `Jenkinsfile`. The Jenkins agent needs Python 3, Docker CLI, and access to a running Docker daemon. The pipeline compiles source, builds test and runtime images, and runs Pytest inside the test image.
+## Source issues handled
 
-No Git repository or Jenkins server is created by this milestone. The assignment's GitHub connection and GitHub Actions workflow can be added when those stages are authorized.
+The desktop script can throw conversion errors for invalid numeric inputs and can leave an old calorie estimate visible when weight becomes zero. This port returns a validation message for invalid numbers and clears the estimate at zero. It keeps Save Client as a confirmation and explicitly explains that data is not stored.
+

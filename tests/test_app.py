@@ -10,53 +10,78 @@ def client():
     return app.test_client()
 
 
-def test_home_starts_with_original_placeholders_and_site_metrics(client):
-    page = client.get("/")
-    assert page.status_code == 200
-    assert b"Select a profile to view workout" in page.data
-    assert b"Select a profile to view diet" in page.data
-    assert b"150 users" in page.data
-    assert b"10,000 sq ft" in page.data
-    assert b"250 members" in page.data
-
-
-@pytest.mark.parametrize(
-    ("slug", "name", "workout", "diet", "color"),
-    [
-        ("fat-loss", "Fat Loss (FL)", "5x5 Back Squat + AMRAP", "Oats Idli", "#e74c3c"),
-        ("muscle-gain", "Muscle Gain (MG)", "Barbell Rows 4x10", "Mutton Curry", "#2ecc71"),
-        ("beginner", "Beginner (BG)", "Technique Mastery", "Balanced Tamil Meals", "#3498db"),
-    ],
-)
-def test_each_version_1_program_is_available_in_browser_and_api(
-    client, slug, name, workout, diet, color
-):
-    page = client.get("/", query_string={"program": slug})
-    assert page.status_code == 200
-    assert workout.encode() in page.data
-    assert diet.encode() in page.data
-    assert color.encode() in page.data
-
-    response = client.get(f"/api/programs/{slug}")
+def test_initial_view_and_reset(client):
+    response = client.get("/")
     assert response.status_code == 200
-    data = response.get_json()
-    assert data["name"] == name
-    assert workout in data["workout"]
-    assert diet in data["diet"]
-    assert data["color"] == color
+    assert b"Estimated Calories: --" in response.data
+    assert b'value="0"' in response.data
+    assert b"Capacity" not in response.data
+    client.post("/", data={"name": "Asha", "program": "fat-loss", "weight": "70", "action": "save"})
+    reset = client.get("/")
+    assert b"Asha" not in reset.data
+    assert b"Estimated Calories: --" in reset.data
+    assert b"Back Squat" not in reset.data
 
 
-def test_program_list_and_site_metrics_api(client):
-    programs = client.get("/api/programs").get_json()
-    assert [item["id"] for item in programs] == ["fat-loss", "muscle-gain", "beginner"]
-    assert client.get("/api/site-metrics").get_json() == {
-        "capacity_users": 150,
-        "area_sq_ft": 10_000,
-        "break_even_members": 250,
-    }
+@pytest.mark.parametrize("slug,calories,workout,diet", [
+    ("fat-loss", 1540, "Back Squat 5x5 + Core", "Target: ~2000 kcal"),
+    ("muscle-gain", 2450, "Barbell Rows 4x10", "Target: ~3200 kcal"),
+    ("beginner", 1820, "Full Body Circuit", "Protein Target: 120g/day"),
+])
+def test_program_preview_and_calorie_estimate(client, slug, calories, workout, diet):
+    response = client.post("/", data={"program": slug, "weight": "70", "action": "preview"})
+    assert response.status_code == 200
+    assert f"Estimated Calories: {calories} kcal".encode() in response.data
+    assert workout.encode() in response.data
+    assert diet.encode() in response.data
+    api = client.get(f"/api/programs/{slug}?weight=70")
+    assert api.status_code == 200
+    assert api.json["estimated_calories"] == calories
 
 
-def test_unknown_program_is_not_found_and_api_is_read_only(client):
-    assert client.get("/", query_string={"program": "unknown"}).status_code == 404
+def test_zero_weight_clears_estimate_and_fractional_weight_truncates(client):
+    assert client.get("/api/programs/fat-loss?weight=70.19").json["estimated_calories"] == 1544
+    assert client.get("/api/programs/fat-loss?weight=0").json["estimated_calories"] is None
+    page = client.post("/", data={"program": "fat-loss", "weight": "0"})
+    assert b"Estimated Calories: --" in page.data
+
+
+def test_save_confirmation_preserves_fields_without_persistence(client):
+    response = client.post("/", data={
+        "name": "Asha", "age": "25", "weight": "70", "program": "fat-loss",
+        "adherence": "85", "action": "save",
+    })
+    assert response.status_code == 200
+    assert b"Client Asha saved successfully. Adherence: 85%" in response.data
+    assert b'value="25"' in response.data
+    assert b'value="70"' in response.data
+    assert b"They are not stored" in response.data
+    assert b"Asha" not in client.get("/").data
+
+
+@pytest.mark.parametrize("data", [
+    {"name": "", "program": "fat-loss"},
+    {"name": "Asha", "program": ""},
+    {"name": "Asha", "program": "unknown"},
+    {"name": "Asha", "program": "fat-loss", "adherence": "101"},
+    {"name": "Asha", "program": "fat-loss", "age": "abc"},
+    {"name": "Asha", "program": "fat-loss", "weight": "nan"},
+])
+def test_invalid_save_is_rejected(client, data):
+    response = client.post("/", data={**data, "action": "save"})
+    assert response.status_code == 400
+    assert b"saved successfully" not in response.data
+
+
+def test_user_text_is_escaped(client):
+    response = client.post("/", data={"name": "<script>alert(1)</script>", "program": "beginner", "action": "save"})
+    assert b"<script>alert(1)</script>" not in response.data
+    assert b"&lt;script&gt;" in response.data
+
+
+def test_program_api_and_missing_program(client):
+    assert len(client.get("/api/programs").json) == 3
     assert client.get("/api/programs/unknown").status_code == 404
-    assert client.post("/api/programs").status_code == 405
+    assert client.get("/api/programs/beginner?weight=-1").status_code == 400
+    assert client.get("/api/programs/beginner?weight=inf").status_code == 400
+

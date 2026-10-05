@@ -1,69 +1,70 @@
-"""Flask port of Aceestver-1.0.py's read-only program viewer."""
+"""Flask milestone for Aceestver-1.1.py; client data is not persisted."""
+
+import math
 
 from flask import Flask, abort, jsonify, render_template, request
 
+from programs import PROGRAMS
 
-PROGRAMS = {
-    "fat-loss": {
-        "name": "Fat Loss (FL)",
-        "workout": "Mon: 5x5 Back Squat + AMRAP\nTue: EMOM 20min Assault Bike\nWed: Bench Press + 21-15-9\nThu: 10RFT Deadlifts/Box Jumps\nFri: 30min Active Recovery",
-        "diet": "B: 3 Egg Whites + Oats Idli\nL: Grilled Chicken + Brown Rice\nD: Fish Curry + Millet Roti\nTarget: 2,000 kcal",
-        "color": "#e74c3c",
-    },
-    "muscle-gain": {
-        "name": "Muscle Gain (MG)",
-        "workout": "Mon: Squat 5x5\nTue: Bench 5x5\nWed: Deadlift 4x6\nThu: Front Squat 4x8\nFri: Incline Press 4x10\nSat: Barbell Rows 4x10",
-        "diet": "B: 4 Eggs + PB Oats\nL: Chicken Biryani (250g Chicken)\nD: Mutton Curry + Jeera Rice\nTarget: 3,200 kcal",
-        "color": "#2ecc71",
-    },
-    "beginner": {
-        "name": "Beginner (BG)",
-        "workout": "Circuit Training: Air Squats, Ring Rows, Push-ups.\nFocus: Technique Mastery & Form (90% Threshold)",
-        "diet": "Balanced Tamil Meals: Idli-Sambar, Rice-Dal, Chapati.\nProtein: 120g/day",
-        "color": "#3498db",
-    },
-}
 
-SITE_METRICS = {
-    "capacity_users": 150,
-    "area_sq_ft": 10_000,
-    "break_even_members": 250,
-}
+def estimate_calories(weight, program):
+    """Use the original int(weight * factor) rule; zero means unspecified."""
+    if not math.isfinite(weight) or weight < 0:
+        raise ValueError("Weight must be a finite, non-negative number.")
+    return int(weight * PROGRAMS[program]["calorie_factor"]) if weight > 0 else None
 
 
 def create_app():
     app = Flask(__name__)
 
-    @app.get("/")
+    @app.route("/", methods=["GET", "POST"])
     def index():
-        selected = request.args.get("program")
-        if selected is not None and selected not in PROGRAMS:
-            abort(404)
+        values = {"name": "", "age": "0", "weight": "0", "program": "", "adherence": "0"}
+        error = message = None
+        calories = None
+        if request.method == "POST":
+            values.update({key: request.form.get(key, default).strip() for key, default in values.items()})
+            try:
+                age = int(values["age"] or "0")
+                adherence = int(values["adherence"] or "0")
+                weight = float(values["weight"] or "0")
+                if age < 0 or not 0 <= adherence <= 100:
+                    raise ValueError("Age must be non-negative and adherence must be between 0 and 100.")
+                if not math.isfinite(weight) or weight < 0:
+                    raise ValueError("Weight must be a finite, non-negative number.")
+                selected = values["program"]
+                if selected and selected not in PROGRAMS:
+                    raise ValueError("Choose a valid program.")
+                if selected:
+                    calories = estimate_calories(weight, selected)
+                action = request.form.get("action", "preview")
+                if action == "save":
+                    if not values["name"] or not selected:
+                        raise ValueError("Please fill client name and program.")
+                    message = f"Client {values['name']} saved successfully. Adherence: {adherence}%"
+                elif action != "preview":
+                    raise ValueError("Unknown action.")
+            except (ValueError, OverflowError) as exc:
+                error = str(exc)
         return render_template(
-            "index.html",
-            programs=PROGRAMS,
-            selected=selected,
-            program=PROGRAMS.get(selected),
-            metrics=SITE_METRICS,
-        )
+            "index.html", programs=PROGRAMS, values=values,
+            program=PROGRAMS.get(values["program"]), calories=calories,
+            error=error, message=message,
+        ), 400 if error else 200
 
     @app.get("/api/programs")
     def list_programs():
-        return jsonify([
-            {"id": slug, "name": details["name"]}
-            for slug, details in PROGRAMS.items()
-        ])
+        return jsonify([{"id": slug, "name": details["name"]} for slug, details in PROGRAMS.items()])
 
     @app.get("/api/programs/<slug>")
     def get_program(slug):
-        details = PROGRAMS.get(slug)
-        if details is None:
+        if slug not in PROGRAMS:
             abort(404)
-        return jsonify({"id": slug, **details})
-
-    @app.get("/api/site-metrics")
-    def site_metrics():
-        return jsonify(SITE_METRICS)
+        try:
+            calories = estimate_calories(float(request.args.get("weight", "0")), slug)
+        except (ValueError, OverflowError):
+            return jsonify(error="Weight must be a finite, non-negative number."), 400
+        return jsonify(id=slug, **PROGRAMS[slug], estimated_calories=calories)
 
     return app
 
@@ -72,3 +73,4 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run()
+

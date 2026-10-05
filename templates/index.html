@@ -3,42 +3,59 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ACEest Functional Fitness</title>
+  <title>ACEest Fitness &amp; Performance</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <header><h1>ACEest Functional Fitness</h1></header>
+  <header><h1>ACEest Functional Fitness System</h1></header>
   <main>
     <aside class="panel">
       <h2>Client Profile</h2>
-      <form method="get" action="/static">
-        <label for="program">Select Program</label>
-        <select id="program" name="program" required>
+      <form method="post" action="{{ url_for('index') }}">
+        <label for="name">Name</label>
+        <input id="name" name="name" value="{{ values.name }}">
+        <label for="age">Age</label>
+        <input id="age" name="age" type="number" min="0" step="1" value="{{ values.age }}">
+        <label for="weight">Weight (kg)</label>
+        <input id="weight" name="weight" type="number" min="0" step="any" value="{{ values.weight }}">
+        <label for="program">Program</label>
+        <select id="program" name="program">
           <option value="">Choose a program</option>
           {% for slug, details in programs.items() %}
-          <option value="{{ slug }}" {% if selected == slug %}selected{% endif %}>{{ details.name }}</option>
+          <option value="{{ slug }}" {% if values.program == slug %}selected{% endif %}>{{ details.name }}</option>
           {% endfor %}
         </select>
-        <button type="submit">View program</button>
+        <label for="adherence">Weekly Adherence (%)</label>
+        <input id="adherence" name="adherence" type="range" min="0" max="100" step="1" value="{{ values.adherence }}">
+        <output id="adherence-value" for="adherence">{{ values.adherence }}%</output>
+        <button id="preview" type="submit" name="action" value="preview">View program</button>
+        <button type="submit" name="action" value="save">Save Client</button>
+        <a class="reset" href="{{ url_for('index') }}">Reset</a>
       </form>
-{#      <div class="metrics" aria-label="Site metrics">#}
-{#        <div><span>Capacity</span><strong>{{ metrics.capacity_users }} users</strong></div>#}
-{#        <div><span>Area</span><strong>{{ "{:,}".format(metrics.area_sq_ft) }} sq ft</strong></div>#}
-{#        <div><span>Break-even</span><strong>{{ metrics.break_even_members }} members</strong></div>#}
-{#      </div>#}
+      <p class="note">Save Client confirms these details for this view. They are not stored.</p>
     </aside>
     <div class="plans">
+      {% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
+      {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
       <section class="panel">
-        <h2>Weekly Workout Chart</h2>
-        {% if program %}<pre class="plan" style="color: {{ program.color }}">{{ program.workout }}</pre>
-        {% else %}<p>Select a profile to view workout</p>{% endif %}
+        <h2>Weekly Training Plan</h2>
+        <pre class="plan" {% if program %}style="color: {{ program.color }}"{% endif %}>{{ program.workout if program else '' }}</pre>
       </section>
       <section class="panel">
-        <h2>Daily Nutrition Plan (Tamil Nadu Context)</h2>
-        {% if program %}<pre class="plan">{{ program.diet }}</pre>
-        {% else %}<p>Select a profile to view diet</p>{% endif %}
+        <h2>Nutrition Plan (TN Context)</h2>
+        <pre class="plan">{{ program.diet if program else '' }}</pre>
       </section>
+      <p class="calories">Estimated Calories: {{ calories|string + ' kcal' if calories is not none else '--' }}</p>
     </div>
   </main>
+  <script>
+    const adherence = document.getElementById('adherence');
+    adherence.addEventListener('input', () => {
+      document.getElementById('adherence-value').textContent = adherence.value + '%';
+    });
+    document.getElementById('program').addEventListener('change', event => {
+      event.target.form.requestSubmit(document.getElementById('preview'));
+    });
+  </script>
 </body>
 </html>

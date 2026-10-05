@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && groupadd --system aceest \
     && useradd --system --gid aceest --home-dir /app aceest
 
-COPY app.py ./
+COPY app.py programs.py ./
 COPY templates ./templates
 COPY static ./static
 RUN chown -R aceest:aceest /app
