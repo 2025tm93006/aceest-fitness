@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ACEest Functional Fitness</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header><h1>ACEest Functional Fitness</h1></header>
+  <main>
+    <aside class="panel">
+      <h2>Client Profile</h2>
+      <form method="get" action="/static">
+        <label for="program">Select Program</label>
+        <select id="program" name="program" required>
+          <option value="">Choose a program</option>
+          {% for slug, details in programs.items() %}
+          <option value="{{ slug }}" {% if selected == slug %}selected{% endif %}>{{ details.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">View program</button>
+      </form>
+{#      <div class="metrics" aria-label="Site metrics">#}
+{#        <div><span>Capacity</span><strong>{{ metrics.capacity_users }} users</strong></div>#}
+{#        <div><span>Area</span><strong>{{ "{:,}".format(metrics.area_sq_ft) }} sq ft</strong></div>#}
+{#        <div><span>Break-even</span><strong>{{ metrics.break_even_members }} members</strong></div>#}
+{#      </div>#}
+    </aside>
+    <div class="plans">
+      <section class="panel">
+        <h2>Weekly Workout Chart</h2>
+        {% if program %}<pre class="plan" style="color: {{ program.color }}">{{ program.workout }}</pre>
+        {% else %}<p>Select a profile to view workout</p>{% endif %}
+      </section>
+      <section class="panel">
+        <h2>Daily Nutrition Plan (Tamil Nadu Context)</h2>
+        {% if program %}<pre class="plan">{{ program.diet }}</pre>
+        {% else %}<p>Select a profile to view diet</p>{% endif %}
+      </section>
+    </div>
+  </main>
+</body>
+</html>
