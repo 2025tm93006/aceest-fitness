@@ -1,70 +1,61 @@
-"""Flask milestone for Aceestver-1.1.py; client data is not persisted."""
+from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 
-import math
-
-from flask import Flask, abort, jsonify, render_template, request
-
-from programs import PROGRAMS
-
-
-def estimate_calories(weight, program):
-    """Use the original int(weight * factor) rule; zero means unspecified."""
-    if not math.isfinite(weight) or weight < 0:
-        raise ValueError("Weight must be a finite, non-negative number.")
-    return int(weight * PROGRAMS[program]["calorie_factor"]) if weight > 0 else None
+PROGRAMS = {
+    "fat-loss": {"name": "Fat Loss (FL)", "workout": "Back Squat, Cardio, Bench, Deadlift, Recovery", "diet": "Egg Whites, Chicken, Fish Curry", "color": "#e74c3c", "factor": 22},
+    "muscle-gain": {"name": "Muscle Gain (MG)", "workout": "Squat, Bench, Deadlift, Press, Rows", "diet": "Eggs, Biryani, Mutton Curry", "color": "#2ecc71", "factor": 35},
+    "beginner": {"name": "Beginner (BG)", "workout": "Air Squats, Ring Rows, Push-ups", "diet": "Balanced Tamil Meals", "color": "#3498db", "factor": 26},
+}
 
 
-def create_app():
+def _update_text(widget, content, color):
+    """Equivalent to the Tkinter helper: it requires three arguments."""
+    return {"widget": widget, "content": content, "color": color}
+
+
+def create_app(test_config=None):
     app = Flask(__name__)
+    app.config.update(CLIENTS=[])
+    if test_config:
+        app.config.update(test_config)
 
-    @app.route("/", methods=["GET", "POST"])
+    @app.get("/")
     def index():
-        values = {"name": "", "age": "0", "weight": "0", "program": "", "adherence": "0"}
-        error = message = None
-        calories = None
-        if request.method == "POST":
-            values.update({key: request.form.get(key, default).strip() for key, default in values.items()})
-            try:
-                age = int(values["age"] or "0")
-                adherence = int(values["adherence"] or "0")
-                weight = float(values["weight"] or "0")
-                if age < 0 or not 0 <= adherence <= 100:
-                    raise ValueError("Age must be non-negative and adherence must be between 0 and 100.")
-                if not math.isfinite(weight) or weight < 0:
-                    raise ValueError("Weight must be a finite, non-negative number.")
-                selected = values["program"]
-                if selected and selected not in PROGRAMS:
-                    raise ValueError("Choose a valid program.")
-                if selected:
-                    calories = estimate_calories(weight, selected)
-                action = request.form.get("action", "preview")
-                if action == "save":
-                    if not values["name"] or not selected:
-                        raise ValueError("Please fill client name and program.")
-                    message = f"Client {values['name']} saved successfully. Adherence: {adherence}%"
-                elif action != "preview":
-                    raise ValueError("Unknown action.")
-            except (ValueError, OverflowError) as exc:
-                error = str(exc)
-        return render_template(
-            "index.html", programs=PROGRAMS, values=values,
-            program=PROGRAMS.get(values["program"]), calories=calories,
-            error=error, message=message,
-        ), 400 if error else 200
+        return render_template("index.html", programs=PROGRAMS, clients=app.config["CLIENTS"])
+
+    @app.post("/clients")
+    def save_client():
+        name = request.form.get("name", "").strip()
+        program = request.form.get("program", "")
+        if not name or program not in PROGRAMS:
+            return render_template("error.html", message="Please fill client name and program."), 400
+        try:
+            age = int(request.form.get("age", 0) or 0)
+            weight = float(request.form.get("weight", 0) or 0)
+            adherence = int(request.form.get("adherence", 0) or 0)
+        except ValueError:
+            return render_template("error.html", message="Age, weight, and adherence must be numbers."), 400
+        if age < 0 or weight < 0 or not 0 <= adherence <= 100:
+            return render_template("error.html", message="Enter valid profile values."), 400
+        app.config["CLIENTS"].append({"name": name, "age": age, "weight": weight, "program": program, "adherence": adherence, "notes": request.form.get("notes", "").strip(), "calories": int(weight * PROGRAMS[program]["factor"])})
+        return redirect(url_for("index", saved=name), code=303)
+
+    @app.post("/reset")
+    def reset():
+        # Mirrors: self._update_text(self.diet_text,)
+        _update_text("diet_text")
+        return redirect(url_for("index"), code=303)
+
+    @app.get("/api/clients")
+    def clients():
+        return jsonify(app.config["CLIENTS"])
 
     @app.get("/api/programs")
-    def list_programs():
-        return jsonify([{"id": slug, "name": details["name"]} for slug, details in PROGRAMS.items()])
+    def programs():
+        return jsonify([{"id": slug, "name": program["name"]} for slug, program in PROGRAMS.items()])
 
-    @app.get("/api/programs/<slug>")
-    def get_program(slug):
-        if slug not in PROGRAMS:
-            abort(404)
-        try:
-            calories = estimate_calories(float(request.args.get("weight", "0")), slug)
-        except (ValueError, OverflowError):
-            return jsonify(error="Weight must be a finite, non-negative number."), 400
-        return jsonify(id=slug, **PROGRAMS[slug], estimated_calories=calories)
+    @app.errorhandler(404)
+    def missing(_error):
+        return jsonify(error="Not found"), 404
 
     return app
 
