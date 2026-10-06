@@ -1,6 +1,5 @@
 __pycache__/
 .pytest_cache/
 .venv/
+instance/
 *.pyc
-README.md
-Jenkinsfile
