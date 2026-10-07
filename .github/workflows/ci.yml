@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Check Python syntax
+        run: python -m compileall -q app.py tests
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build Docker test image
+        run: docker build --target test -t aceest:test .
+
+      - name: Test Docker image
+        run: docker run --rm aceest:test
+
+      - name: Build runtime image
+        run: docker build --target runtime -t aceest:runtime .
