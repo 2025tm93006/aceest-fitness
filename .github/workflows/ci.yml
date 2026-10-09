@@ -36,3 +36,14 @@ jobs:
 
       - name: Build runtime image
         run: docker build --target runtime -t aceest:runtime .
+
+    trigger-jenkins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Jenkins Job
+        uses: appleboy/jenkins-action@master
+        with:
+          url: "https://your-jenkins-server.com"
+          user: "cloud"
+          token: "cloud"
+          job: "aceest-fitness-ci-pipeline"
