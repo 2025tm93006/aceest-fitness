@@ -1,0 +1,5 @@
+<!doctype html><title>{{client.name}}</title><link rel="stylesheet" href="{{url_for('static',filename='style.css')}}"><main><a href="/">← Clients</a><h1>{{client.name}}</h1><pre>Age: {{client.age}}
+Height: {{client.height}}
+Weight: {{client.weight}}
+Program: {{programs[client.program][0]}}
+Membership Expiry: {{client.membership_expiry}}</pre><a class="button" href="/clients/{{client.id}}/report.pdf">Export PDF Report</a><section><h2>Generate AI Program</h2><form method="post" action="/clients/{{client.id}}/plan"><select name="level"><option>beginner</option><option>intermediate</option><option>advanced</option></select><button>Generate</button></form>{%if plan%}<table><tr><th>Day</th><th>Exercise</th><th>Sets</th><th>Reps</th></tr>{%for row in plan%}<tr>{%for x in row%}<td>{{x}}</td>{%endfor%}</tr>{%endfor%}</table>{%endif%}</section></main>

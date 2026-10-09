@@ -1,7 +1,7 @@
-# ACEest Flask version 2.2.4
+# ACEest Flask version 3.1.2
 
-Migration of `Aceestver-2.2.4.py`: expanded client profiles and goals, SQLite persistence, weekly adherence, BMI, body metrics, workouts, optional exercises, and workout history.
+Migration of `Aceestver-3.1.2.py`: login, SQLite client profiles with membership expiry, generated workout programs, and PDF reports. Use the source's demo login `admin` / `admin`.
 
-Run `python -m pytest -q` after installing `requirements-test.txt`. Jenkins path: `flask-v2.2.4/Jenkinsfile`. Docker test: `docker build --target test -t aceest-v2.2.4:test . && docker run --rm aceest-v2.2.4:test`.
+Run `python -m pytest -q` after installing `requirements-test.txt`. Jenkins script path: `flask-v3.1.2/Jenkinsfile`. Docker test: `docker build --target test -t aceest-v3.1.2:test . && docker run --rm aceest-v3.1.2:test`.
 
-Source issue: this desktop version may drop an existing `clients` table if its schema is older. This migration uses additive `CREATE TABLE IF NOT EXISTS` setup and does not delete existing client data.
+Source issues: the original stores the admin password in plaintext, starts a Tkinter login window using blocking nested event loops, and has no authorization checks after login. This migration keeps the assigned demo credential for parity but uses request-based login protection. The next production stage should hash passwords and add CSRF protection.
