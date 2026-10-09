@@ -43,7 +43,7 @@ jobs:
       - name: Trigger Jenkins Job
         uses: appleboy/jenkins-action@master
         with:
-          url: "https://your-jenkins-server.com"
+          url: "http://localhost:8080/"
           user: "cloud"
           token: "cloud"
           job: "aceest-fitness-ci-pipeline"
