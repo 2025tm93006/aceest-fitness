@@ -1,25 +1,30 @@
-"""Flask migration of Aceestver-2.2.4.py."""
-import os, sqlite3
-from datetime import date, datetime
+"""Flask migration of Aceestver-3.1.2.py."""
+import os, random, sqlite3
+from io import BytesIO
 from pathlib import Path
-from flask import Flask, abort, g, jsonify, redirect, render_template, request, url_for
 
-PROGRAMS = {"fat-loss-3": ("Fat Loss (FL) – 3 day", 22, "3-day full-body fat loss"),
-            "fat-loss-5": ("Fat Loss (FL) – 5 day", 24, "5-day split, higher volume fat loss"),
-            "muscle-gain": ("Muscle Gain (MG) – PPL", 35, "Push/Pull/Legs hypertrophy"),
-            "beginner": ("Beginner (BG)", 26, "3-day simple beginner full-body")}
-TYPES = ("Strength", "Hypertrophy", "Conditioning", "Mixed", "Mobility")
+from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, session, url_for
+from fpdf import FPDF
+
+PROGRAMS = {"fat-loss": ("Fat Loss (FL) – 3 day", 22), "fat-loss-5": ("Fat Loss (FL) – 5 day", 24),
+            "muscle-gain": ("Muscle Gain (MG) – PPL", 35), "beginner": ("Beginner (BG)", 26)}
+POOLS = {"Strength": ["Squat", "Deadlift", "Bench Press", "Overhead Press", "Pull-Up", "Barbell Row"],
+         "Hypertrophy": ["Leg Press", "Incline Dumbbell Press", "Lat Pulldown", "Lateral Raise", "Bicep Curl",
+                         "Tricep Extension"],
+         "Conditioning": ["Running", "Cycling", "Rowing", "Burpees", "Jump Rope", "Kettlebell Swings"],
+         "Full Body": ["Push-Up", "Pull-Up", "Lunge", "Plank", "Dumbbell Row", "Dumbbell Press"]}
 
 
 def create_app(config=None):
-    app = Flask(__name__);
-    app.config['DATABASE'] = os.environ.get('ACEEST_DB', str(Path(app.instance_path) / 'aceest.sqlite3'));
+    app = Flask(__name__)
+
+    app.config.update(SECRET_KEY='development-only-change-me',
+                      DATABASE=os.environ.get('ACEEST_DB', str(Path(app.instance_path) / 'aceest.sqlite3')));
     app.config.update(config or {});
     Path(app.config['DATABASE']).parent.mkdir(parents=True, exist_ok=True)
 
     def db():
-        if 'db' not in g: g.db = sqlite3.connect(app.config['DATABASE']);g.db.row_factory = sqlite3.Row;g.db.execute(
-            'PRAGMA foreign_keys=ON')
+        if 'db' not in g: g.db = sqlite3.connect(app.config['DATABASE']);g.db.row_factory = sqlite3.Row
         return g.db
 
     @app.teardown_appcontext
@@ -27,270 +32,114 @@ def create_app(config=None):
         if (c := g.pop('db', None)): c.close()
 
     with app.app_context():
-        db().executescript('''CREATE TABLE IF NOT EXISTS clients
-                              (
-                                  id
-                                  INTEGER
-                                  PRIMARY
-                                  KEY,
-                                  name
-                                  TEXT
-                                  UNIQUE
-                                  NOT
-                                  NULL,
-                                  age
-                                  INTEGER,
-                                  height
-                                  REAL,
-                                  weight
-                                  REAL,
-                                  program
-                                  TEXT
-                                  NOT
-                                  NULL,
-                                  calories
-                                  INTEGER,
-                                  target_weight
-                                  REAL,
-                                  target_adherence
-                                  INTEGER
-                              );
-        CREATE TABLE IF NOT EXISTS progress
-        (
-            id
-            INTEGER
-            PRIMARY
-            KEY,
-            client_id
-            INTEGER
-            NOT
-            NULL,
-            week
-            TEXT
-            NOT
-            NULL,
-            adherence
-            INTEGER
-            NOT
-            NULL,
-            FOREIGN
-            KEY
-        (
-            client_id
-        ) REFERENCES clients
-        (
-            id
-        ));
-        CREATE TABLE IF NOT EXISTS workouts
-        (
-            id
-            INTEGER
-            PRIMARY
-            KEY,
-            client_id
-            INTEGER
-            NOT
-            NULL,
-            date
-            TEXT
-            NOT
-            NULL,
-            workout_type
-            TEXT
-            NOT
-            NULL,
-            duration_min
-            INTEGER
-            NOT
-            NULL,
-            notes
-            TEXT,
-            FOREIGN
-            KEY
-        (
-            client_id
-        ) REFERENCES clients
-        (
-            id
-        ));
-        CREATE TABLE IF NOT EXISTS exercises
-        (
-            id
-            INTEGER
-            PRIMARY
-            KEY,
-            workout_id
-            INTEGER
-            NOT
-            NULL,
-            name
-            TEXT,
-            sets
-            INTEGER,
-            reps
-            INTEGER,
-            weight
-            REAL,
-            FOREIGN
-            KEY
-        (
-            workout_id
-        ) REFERENCES workouts
-        (
-            id
-        ));
-        CREATE TABLE IF NOT EXISTS metrics
-        (
-            id
-            INTEGER
-            PRIMARY
-            KEY,
-            client_id
-            INTEGER
-            NOT
-            NULL,
-            date
-            TEXT
-            NOT
-            NULL,
-            weight
-            REAL,
-            waist
-            REAL,
-            bodyfat
-            REAL,
-            FOREIGN
-            KEY
-        (
-            client_id
-        ) REFERENCES clients
-        (
-            id
-        ));''');
+        db().executescript(
+            "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,username TEXT UNIQUE,password TEXT,role TEXT);CREATE TABLE IF NOT EXISTS clients(id INTEGER PRIMARY KEY,name TEXT UNIQUE,age INTEGER,height REAL,weight REAL,program TEXT,calories INTEGER,target_weight REAL,target_adherence INTEGER,membership_expiry TEXT);");
+        db().execute("INSERT OR IGNORE INTO users(username,password,role)VALUES('admin','admin','Admin')");
         db().commit()
 
-    def number(data, key, kind=float, minimum=0, required=False):
-        raw = data.get(key, '')
-        if raw == '':
-            if required: raise ValueError(f'{key} is required.')
-            return None
-        try:
-            value = kind(raw)
-        except ValueError as e:
-            raise ValueError(f'{key} must be a number.') from e
-        if value < minimum: raise ValueError(f'{key} cannot be negative.')
-        return value
+    def auth():
+        if 'user' not in session: abort(401)
 
-    def profile(data):
-        name, p = data.get('name', '').strip(), data.get('program', '')
-        if not name or p not in PROGRAMS: raise ValueError('Name and program are required.')
-        age = number(data, 'age', int);
-        h = number(data, 'height');
-        w = number(data, 'weight');
-        tw = number(data, 'target_weight');
-        ta = number(data, 'target_adherence', int)
-        if ta is not None and ta > 100: raise ValueError('target adherence must be at most 100.')
-        return name, age, h, w, p, int(w * PROGRAMS[p][1]) if w else None, tw, ta
-
-    def get_client(cid):
-        c = db().execute('SELECT * FROM clients WHERE id=?', (cid,)).fetchone()
-        if not c: abort(404)
-        return c
+    def client(cid):
+        row = db().execute('SELECT * FROM clients WHERE id=?', (cid,)).fetchone()
+        if not row: abort(404)
+        return row
 
     @app.get('/')
-    def home():
-        return render_template('index.html', programs=PROGRAMS,
-                               clients=db().execute('SELECT * FROM clients ORDER BY name').fetchall())
+    def index():
+        if 'user' not in session: return redirect(url_for('login'))
+        return render_template('index.html', clients=db().execute('SELECT * FROM clients ORDER BY name').fetchall(),
+                               programs=PROGRAMS, user=session['user'])
+
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if request.method == 'POST':
+            row = db().execute('SELECT * FROM users WHERE username=? AND password=?',
+                               (request.form.get('username', ''), request.form.get('password', ''))).fetchone()
+            if row: session['user'] = row['username'];session['role'] = row['role'];return redirect(url_for('index'))
+            return render_template('login.html', error='Invalid credentials'), 401
+        return render_template('login.html')
+
+    @app.post('/logout')
+    def logout():
+        session.clear();
+        return redirect(url_for('login'), 303)
 
     @app.post('/clients')
     def save_client():
+        auth();
+        n, p = request.form.get('name', '').strip(), request.form.get('program', '')
+        if not n or p not in PROGRAMS: return render_template('error.html',
+                                                              message='Name and program are required.'), 400
         try:
-            values = profile(request.form)
-        except ValueError as e:
-            return render_template('error.html', message=str(e)), 400
+            a = int(request.form.get('age', 0) or 0);
+            h = float(request.form.get('height', 0) or 0);
+            w = float(
+                request.form.get('weight', 0) or 0)
+        except ValueError:
+            return render_template('error.html', message='Age, height and weight must be numeric.'), 400
+        if min(a, h, w) < 0: return render_template('error.html', message='Profile values cannot be negative.'), 400
         db().execute(
-            'INSERT INTO clients(name,age,height,weight,program,calories,target_weight,target_adherence)VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET age=excluded.age,height=excluded.height,weight=excluded.weight,program=excluded.program,calories=excluded.calories,target_weight=excluded.target_weight,target_adherence=excluded.target_adherence',
-            values);
+            'INSERT INTO clients(name,age,height,weight,program,calories,target_weight,target_adherence,membership_expiry)VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(name)DO UPDATE SET age=excluded.age,height=excluded.height,weight=excluded.weight,program=excluded.program,calories=excluded.calories,target_weight=excluded.target_weight,target_adherence=excluded.target_adherence,membership_expiry=excluded.membership_expiry',
+            (n, a, h, w, p, int(w * PROGRAMS[p][1]), request.form.get('target_weight') or None,
+             request.form.get('target_adherence') or None, request.form.get('membership_expiry') or None));
         db().commit();
-        cid = db().execute('SELECT id FROM clients WHERE name=?', (values[0],)).fetchone()['id'];
-        return redirect(url_for('client', cid=cid), 303)
+        cid = db().execute('SELECT id FROM clients WHERE name=?', (n,)).fetchone()['id'];
+        return redirect(url_for('detail', cid=cid), 303)
 
     @app.get('/clients/<int:cid>')
-    def client(cid):
-        c = get_client(cid);
-        progress = db().execute('SELECT * FROM progress WHERE client_id=? ORDER BY id', (cid,)).fetchall();
-        metrics = db().execute('SELECT * FROM metrics WHERE client_id=? ORDER BY date DESC,id DESC', (cid,)).fetchall();
-        workouts = db().execute(
-            'SELECT w.*,e.name exercise,e.sets,e.reps,e.weight exercise_weight FROM workouts w LEFT JOIN exercises e ON e.workout_id=w.id WHERE w.client_id=? ORDER BY w.date DESC,w.id DESC',
-            (cid,)).fetchall();
-        bmi = round(c['weight'] / (c['height'] / 100) ** 2, 1) if c['weight'] and c['height'] else None
-        return render_template('client.html', c=c, programs=PROGRAMS, progress=progress, metrics=metrics,
-                               workouts=workouts, bmi=bmi, types=TYPES, today=date.today().isoformat())
+    def detail(cid):
+        auth();
+        return render_template('detail.html', client=client(cid), programs=PROGRAMS,
+                               plan=session.get(f'plan-{cid}'))
 
-    @app.post('/clients/<int:cid>/progress')
-    def add_progress(cid):
-        get_client(cid)
-        try:
-            a = number(request.form, 'adherence', int, 0, True)
-        except ValueError as e:
-            return render_template('error.html', message=str(e)), 400
-        if a > 100: return render_template('error.html', message='Adherence must be at most 100.'), 400
-        db().execute('INSERT INTO progress(client_id,week,adherence)VALUES(?,?,?)',
-                     (cid, datetime.now().strftime('Week %U - %Y'), a));
-        db().commit();
-        return redirect(url_for('client', cid=cid), 303)
+    @app.post('/clients/<int:cid>/plan')
+    def plan(cid):
+        auth();
+        c = client(cid);
+        level = request.form.get('level', '').lower()
+        if level not in ('beginner', 'intermediate', 'advanced'): return render_template('error.html',
+                                                                                         message='Choose beginner, intermediate, or advanced.'), 400
+        focus = 'Conditioning' if 'Fat Loss' in c['program'] else 'Hypertrophy' if 'Muscle Gain' in c[
+            'program'] else 'Full Body';
+        days, sets, reps = \
+            {'beginner': (3, (2, 3), (8, 12)), 'intermediate': (4, (3, 4), (8, 15)), 'advanced': (5, (4, 5), (6, 15))}[
+                level];
+        result = []
+        for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][:days]:
+            for exercise in random.sample(POOLS[focus], 3 if days < 4 else 4): result.append(
+                (day, exercise, random.randint(*sets), random.randint(*reps)))
+        session[f'plan-{cid}'] = result;
+        return redirect(url_for('detail', cid=cid), 303)
 
-    @app.post('/clients/<int:cid>/metrics')
-    def add_metrics(cid):
-        get_client(cid)
-        try:
-            d = date.fromisoformat(request.form.get('date', '')).isoformat();w = number(request.form, 'weight', float,
-                                                                                        0, True);waist = number(
-                request.form, 'waist');bf = number(request.form, 'bodyfat')
-        except(ValueError) as e:
-            return render_template('error.html', message=str(e)), 400
-        db().execute('INSERT INTO metrics(client_id,date,weight,waist,bodyfat)VALUES(?,?,?,?,?)',
-                     (cid, d, w, waist, bf));
-        db().commit();
-        return redirect(url_for('client', cid=cid), 303)
-
-    @app.post('/clients/<int:cid>/workouts')
-    def add_workout(cid):
-        get_client(cid)
-        try:
-            d = date.fromisoformat(request.form.get('date', '')).isoformat();duration = number(request.form, 'duration',
-                                                                                               int, 1, True)
-        except ValueError as e:
-            return render_template('error.html', message=str(e)), 400
-        typ = request.form.get('type', '')
-        if typ not in TYPES: return render_template('error.html', message='Choose a valid workout type.'), 400
-        cur = db().execute('INSERT INTO workouts(client_id,date,workout_type,duration_min,notes)VALUES(?,?,?,?,?)',
-                           (cid, d, typ, duration, request.form.get('notes', '').strip()))
-        if (n := request.form.get('exercise', '').strip()):
-            try:
-                s = number(request.form, 'sets', int, 1, True);r = number(request.form, 'reps', int, 1,
-                                                                          True);w = number(request.form,
-                                                                                           'exercise_weight') or 0
-            except ValueError as e:
-                return render_template('error.html', message=str(e)), 400
-            db().execute('INSERT INTO exercises(workout_id,name,sets,reps,weight)VALUES(?,?,?,?,?)',
-                         (cur.lastrowid, n, s, r, w))
-        db().commit();
-        return redirect(url_for('client', cid=cid), 303)
+    @app.get('/clients/<int:cid>/report.pdf')
+    def report(cid):
+        auth();
+        c = client(cid);
+        pdf = FPDF();
+        pdf.add_page();
+        pdf.set_font('Helvetica', 'B', 16);
+        pdf.cell(0, 10, f'Client Report - {c["name"]}', new_x='LMARGIN', new_y='NEXT');
+        pdf.set_font('Helvetica', size=12)
+        for label, value in [('Name', c['name']), ('Age', c['age']), ('Height', c['height']), ('Weight', c['weight']),
+                             ('Program', PROGRAMS[c['program']][0]),
+                             ('Membership Expiry', c['membership_expiry'] or '')]: pdf.cell(0, 8,
+                                                                                            f'{label}: {value}'.replace(
+                                                                                                '–', '-'),
+                                                                                            new_x='LMARGIN',
+                                                                                            new_y='NEXT')
+        return send_file(BytesIO(bytes(pdf.output())), mimetype='application/pdf', as_attachment=True,
+                         download_name=f'{c["name"]}_report.pdf')
 
     @app.get('/api/clients')
     def api_clients():
+        auth();
         return jsonify([dict(x) for x in db().execute('SELECT * FROM clients ORDER BY name')])
-
-    @app.get('/api/clients/<int:cid>/progress')
-    def api_progress(cid):
-        get_client(cid);return jsonify([dict(x) for x in db().execute(
-            'SELECT week,adherence FROM progress WHERE client_id=? ORDER BY id', (cid,))])
 
     return app
 
 
 app = create_app()
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run()
