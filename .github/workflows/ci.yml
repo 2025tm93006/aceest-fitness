@@ -37,7 +37,7 @@ jobs:
       - name: Build runtime image
         run: docker build --target runtime -t aceest:runtime .
 
-    trigger-jenkins:
+  trigger-jenkins:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Jenkins Job
