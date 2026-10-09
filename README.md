@@ -1,7 +1,7 @@
-# ACEest Flask version 2.2.1
+# ACEest Flask version 2.2.4
 
-Migration of `Aceestver-2.2.1.py`. It adds a client-specific weekly adherence chart to the SQLite client and progress features from 2.1.2. **View Progress Chart** opens a separate browser window and renders a line chart with point markers, matching the original Matplotlib popup.
+Migration of `Aceestver-2.2.4.py`: expanded client profiles and goals, SQLite persistence, weekly adherence, BMI, body metrics, workouts, optional exercises, and workout history.
 
-Run `python -m pytest -q` after installing `requirements-test.txt`. Jenkins script: `flask-v2.2.1/Jenkinsfile`. Docker test: `docker build --target test -t aceest-v2.2.1:test . && docker run --rm aceest-v2.2.1:test`.
+Run `python -m pytest -q` after installing `requirements-test.txt`. Jenkins path: `flask-v2.2.4/Jenkinsfile`. Docker test: `docker build --target test -t aceest-v2.2.4:test . && docker run --rm aceest-v2.2.4:test`.
 
-Source issue: weeks use `Week %U - %Y`, so logging more than one entry in the same week creates multiple points with the same label. This migration preserves that behavior.
+Source issue: this desktop version may drop an existing `clients` table if its schema is older. This migration uses additive `CREATE TABLE IF NOT EXISTS` setup and does not delete existing client data.
