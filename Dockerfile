@@ -10,7 +10,7 @@ COPY static ./static
 
 FROM base AS test
 COPY tests ./tests
-CMD ["python", "-m", "pytest", "-q"]
+CMD ["python", "-m", "pytest", "-v"]
 
 FROM base AS runtime
 EXPOSE 8000
