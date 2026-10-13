@@ -1,11 +1,8 @@
 pipeline {
-
     agent any
-
     triggers {
        pollSCM('H/5 * * * *')
     }
-
     stages {
         stage('Checkout') {
             steps {
@@ -13,7 +10,6 @@ pipeline {
                 checkout scm
             }
         }
-
         stage('Build') {
             steps {
                 echo 'Installing Python dependencies'
@@ -23,7 +19,6 @@ pipeline {
                 '''
             }
         }
-
         stage('Test') {
             steps {
                 echo 'Running automated tests'
