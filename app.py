@@ -3,7 +3,7 @@ import os, random, sqlite3
 from io import BytesIO
 from datetime import date
 from pathlib import Path
-from flask import Flask, abort, g, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from fpdf import FPDF
 
 PROGRAMS = {"Fat Loss": ["Full Body HIIT", "Circuit Training", "Cardio + Weights"],
@@ -66,10 +66,20 @@ def create_app(config=None):
     def add_client():
         auth();
         name = request.form.get('name', '').strip()
-        if not name: return render_template('error.html', message='Client name is required.'), 400
+        if not name or len(name) > 120:
+            message = 'Client name is required.' if not name else 'Client name must be 120 characters or fewer.'
+            if request.form.get('return_to') == 'dashboard':
+                return render_template('index.html',
+                                       clients=db().execute('SELECT * FROM clients ORDER BY name').fetchall(),
+                                       role=session['role'], selected_client=None, client_error=message), 400
+            return render_template('error.html', message=message), 400
+        existing = db().execute('SELECT id FROM clients WHERE name=?', (name,)).fetchone()
         db().execute("INSERT OR IGNORE INTO clients(name,membership_status)VALUES(?,?)", (name, 'Active'));
         db().commit();
         c = db().execute('SELECT id FROM clients WHERE name=?', (name,)).fetchone();
+        if request.form.get('return_to') == 'dashboard':
+            flash('This client already exists. Their profile has been selected.' if existing else 'Client added successfully.')
+            return redirect(url_for('index', client_id=c['id']), 303)
         return redirect(url_for('detail', cid=c['id']), 303)
 
     @app.get('/clients/<int:cid>')
