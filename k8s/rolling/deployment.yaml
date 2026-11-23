@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-fitness-rolling
+  labels:
+    app.kubernetes.io/name: aceest-fitness-rolling
+spec:
+  replicas: 2
+  minReadySeconds: 5
+  progressDeadlineSeconds: 90
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aceest-fitness-rolling
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aceest-fitness-rolling
+    spec:
+      containers:
+        - name: aceest-fitness
+          # Render this manifest with the stable image reference from Jenkins.
+          image: example.invalid/aceest-fitness:jenkins-build
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: ACEEST_DB
+              value: /app/instance/aceest.sqlite3
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: http
+            periodSeconds: 5
+          volumeMounts:
+            - name: demo-data
+              mountPath: /app/instance
+      volumes:
+        - name: demo-data
+          emptyDir: {}

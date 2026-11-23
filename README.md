@@ -178,6 +178,78 @@ with `kubectl --context minikube describe pods -l app.kubernetes.io/name=aceest-
 For image pull errors, check the published tag, the repository's pull
 permissions, and whether the image supports the Minikube node's architecture.
 
+## Test a rolling update and rollback in Prayogshala
+
+Use the Docker Hub image already running in Minikube as the stable image.
+Publish the commit with the updated login copy through Jenkins on `master`.
+Copy the exact stable and candidate image references from their builds'
+`ci-reports/image.txt` artifacts. The candidate login page says
+“Sign in to manage clients, log workouts, and check memberships.”
+
+From the updated repository on the lab VM, start the rolling-update demo.
+It uses a separate Deployment and Service, with two replicas and a disposable
+SQLite database per pod. Its data is suitable for anonymous login-page checks.
+
+```bash
+k() { minikube kubectl -- --context minikube --namespace default "$@"; }
+read -r -p 'Stable Docker Hub image reference: ' STABLE_IMAGE
+read -r -p 'Candidate Docker Hub image reference: ' CANDIDATE_IMAGE
+
+k apply -f k8s/rolling/service.yaml
+k set image --local -f k8s/rolling/deployment.yaml \
+  aceest-fitness="$STABLE_IMAGE" -o yaml | k apply -f -
+k rollout status deployment/aceest-fitness-rolling --timeout=120s
+
+STABLE_REVISION="$(k get deployment aceest-fitness-rolling \
+  -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')"
+DEMO_URL="$(minikube service aceest-fitness-rolling --namespace default --url)/login"
+printf 'Stable revision: %s\nDemo URL: %s\n' "$STABLE_REVISION" "$DEMO_URL"
+curl --noproxy '*' -fsS "$DEMO_URL" | grep -oF 'Sign in to manage your clients and training.'
+```
+
+In a second lab terminal, monitor the NodePort URL while the pods are replaced.
+Keep this running through the healthy rollout, failure, and rollback.
+
+```bash
+DEMO_URL="$(minikube service aceest-fitness-rolling --namespace default --url)/login"
+while true; do
+  status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --max-time 3 "$DEMO_URL")"
+  printf '%s HTTP %s\n' "$(date -Is)" "$status"
+  sleep 1
+done | tee /tmp/aceest-rolling-availability.log
+```
+
+In the first terminal, apply the candidate and confirm its visible change.
+
+```bash
+k set image deployment/aceest-fitness-rolling aceest-fitness="$CANDIDATE_IMAGE"
+k rollout status deployment/aceest-fitness-rolling --timeout=120s
+k get replicasets,pods -l app.kubernetes.io/name=aceest-fitness-rolling
+curl --noproxy '*' -fsS "$DEMO_URL" | grep -oF 'Sign in to manage clients, log workouts, and check memberships.'
+```
+
+Force the next revision to fail readiness by probing a route that returns 404.
+Expect the rollout to exceed its progress deadline. With `maxUnavailable: 0`,
+the ready pods can keep serving the login page. Then restore the recorded
+stable revision and verify the image and page text.
+
+```bash
+k patch deployment aceest-fitness-rolling --type=strategic \
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"aceest-fitness","readinessProbe":{"httpGet":{"path":"/rollout-failure-demo"}}}]}}}}'
+k rollout status deployment/aceest-fitness-rolling --timeout=120s
+k get pods -l app.kubernetes.io/name=aceest-fitness-rolling
+
+k rollout undo deployment/aceest-fitness-rolling --to-revision="$STABLE_REVISION"
+k rollout status deployment/aceest-fitness-rolling --timeout=120s
+RUNNING_IMAGE="$(k get deployment aceest-fitness-rolling -o jsonpath='{.spec.template.spec.containers[0].image}')"
+test "$RUNNING_IMAGE" = "$STABLE_IMAGE" && printf 'Restored %s\n' "$RUNNING_IMAGE"
+curl --noproxy '*' -fsS "$DEMO_URL" | grep -oF 'Sign in to manage your clients and training.'
+k rollout history deployment/aceest-fitness-rolling
+```
+
+Stop the monitor with Ctrl+C and save the availability log and rollout output
+as assignment evidence. Check for any non-200 responses in the log.
+
 ## Main routes
 
 | Route | Purpose |
