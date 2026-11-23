@@ -60,22 +60,15 @@ pipeline {
                 }
             }
         }
-        stage('SonarQube analysis') {
+        stage('SonarQube analysis and quality gate') {
             steps {
                 script {
                     def scannerHome = tool 'SonarScanner'
                     withEnv(["SONAR_SCANNER_HOME=${scannerHome}"]) {
                         withSonarQubeEnv('SonarQube') {
-                            sh '"$SONAR_SCANNER_HOME/bin/sonar-scanner"'
+                            sh '"$SONAR_SCANNER_HOME/bin/sonar-scanner" -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=600'
                         }
                     }
-                }
-            }
-        }
-        stage('Quality gate') {
-            steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
                 }
             }
         }

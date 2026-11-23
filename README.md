@@ -96,9 +96,10 @@ Open `http://127.0.0.1:8000` when the runtime container is running.
 
 The [Jenkinsfile](Jenkinsfile) polls Git every five minutes, runs Pytest inside the
 Docker test image, and publishes the JUnit results when a report is available.
-SonarQube analyzes the source and imports the Python coverage report. On
-`master`, Jenkins builds and pushes the runtime image only after the quality
-gate passes. The exact image tag is saved in the build artifact `ci-reports/image.txt`.
+SonarQube analyzes the source and imports the Python coverage report. SonarScanner
+polls SonarQube for the quality gate result for up to ten minutes. On `master`,
+Jenkins builds and pushes the runtime image only after the quality gate passes.
+The exact image tag is saved in the build artifact `ci-reports/image.txt`.
 
 #### Jenkins setup
 
@@ -117,11 +118,7 @@ gate passes. The exact image tag is saved in the build artifact `ci-reports/imag
    installation named `SonarQube` with the server URL and that credential.
    In **Manage Jenkins → Tools**, add a SonarScanner CLI installation named
    `SonarScanner`.
-4. In SonarQube, add a project webhook targeting
-   `https://<jenkins-host>/sonarqube-webhook/`, including any Jenkins URL
-   prefix. SonarQube must be able to reach that URL. Jenkins times out the wait
-   after ten minutes.
-5. Create an `aceest-fitness` repository in your Docker Hub user or organization
+4. Create an `aceest-fitness` repository in your Docker Hub user or organization
    namespace. In **Manage Jenkins → System → Global properties → Environment
    variables**, set `DOCKERHUB_NAMESPACE` to that namespace. Add a **Username
    with password** credential with ID `dockerhub-credentials`. Use your Docker
