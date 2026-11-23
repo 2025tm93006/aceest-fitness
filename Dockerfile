@@ -9,6 +9,8 @@ COPY templates ./templates
 COPY static ./static
 
 FROM base AS test
+RUN pip install --no-cache-dir pytest-cov==6.2.1
+COPY .coveragerc ./
 COPY tests ./tests
 CMD ["python", "-m", "pytest", "-v"]
 
