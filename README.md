@@ -139,6 +139,45 @@ The workflow at [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on pus
 5. Builds and tests the Docker `test` image.
 6. Builds the Docker `runtime` image.
 
+## Deploy to Minikube
+
+Start Docker and run `minikube start --driver=docker` with Minikube and
+`kubectl` installed. Download `ci-reports/image.txt` from a successful Jenkins
+`master` build. It contains the published Docker Hub image reference. Run
+the following from the repository root and adjust the artifact path if needed.
+
+```bash
+ACEEST_IMAGE="$(cat "$HOME/Downloads/image.txt")"
+kubectl --context minikube apply -f k8s/pvc.yaml -f k8s/service.yaml
+kubectl --context minikube set image --local -f k8s/deployment.yaml aceest-fitness="$ACEEST_IMAGE" -o yaml |
+  kubectl --context minikube apply -f -
+kubectl --context minikube rollout status deployment/aceest-fitness --timeout=180s
+kubectl --context minikube get pods,service,pvc -l app.kubernetes.io/name=aceest-fitness
+```
+
+The pod should be `1/1` ready and the claim should be `Bound`. The baseline uses
+one replica and the `Recreate` strategy so only one pod writes to the SQLite
+database. The persistent volume keeps data across pod replacement. This setup
+assumes the cluster can pull the Docker Hub image.
+
+Forward the Service to your machine and leave that terminal running.
+
+```bash
+kubectl --context minikube port-forward service/aceest-fitness 8081:80
+```
+
+In another terminal, verify the login route returns HTTP 200.
+
+```bash
+curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/login
+```
+
+Open `http://localhost:8081/login` in a browser. This forwarded endpoint is
+for local verification. If the pod fails to start, check the Events section
+with `kubectl --context minikube describe pods -l app.kubernetes.io/name=aceest-fitness`.
+For image pull errors, check the published tag, the repository's pull
+permissions, and whether the image supports the Minikube node's architecture.
+
 ## Main routes
 
 | Route | Purpose |
